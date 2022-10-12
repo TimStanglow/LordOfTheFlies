@@ -22,7 +22,6 @@ STRATEGY_FOLDER = "exampleStrats"
 RESULTS_FILE = "results.txt"
 numberOfRounds = 3
 
-modules = dict()
 
 
 def energyFromVegetation(id):
@@ -38,7 +37,7 @@ def energyFromVegetation(id):
 
 
 class Player:
-    def __init__(self, x, y, strategy, id):
+    def __init__(self, x, y, strategy, id, modules):
         self.x = x
         self.y = y
         self.strategy = strategy
@@ -49,20 +48,22 @@ class Player:
         self.do_split = None
         self.split_memory = None
         self.chase_target = None
+        self.memory = None
+        self.modules = modules
 
     def makeTurn(self):
-        self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = modules[
+        self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = self.modules[
             self.strategy].make_turn(None, self.memory)
 
 
 class World:
 
-    def __init__(self, sizeX, sizeY, WorldGenTypeID, strategies):
+    def __init__(self, sizeX, sizeY, WorldGenTypeID, strategies, modules):
         # Values correspond to ID from Concept
         self.terrain = np.zeros((sizeX, sizeY), np.int32)
         # For Now 0 = No Vegetation, All else are one higher than the ID from concept
         self.vegetation = np.zeros((sizeX, sizeY), np.int32)
-        self.playerMap = np.zeros((sizeX, sizeY), list)
+        self.playerMap = np.empty((sizeX, sizeY), object)
 
         self.strategies = strategies
         self.players = list()
@@ -82,7 +83,7 @@ class World:
 
         nextPlayerID = 0
         for strategy in strategies:
-            player = Player(random.randrange(sizeX), random.randrange(sizeY), strategy, nextPlayerID)
+            player = Player(random.randrange(sizeX), random.randrange(sizeY), strategy, nextPlayerID, modules)
             self.playerMap[player.x, player.y].append(nextPlayerID)
             self.players.append(player)
             nextPlayerID += 1
@@ -103,15 +104,21 @@ class World:
         for player in self.players:
             if player.alive:
                 # TODO move players in world
-                player.x += player.movement[0]
-                player.x %= world_width
-                player.y += player.movement[1]
-                player.y %= world_height
-                player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] *
+                if player.movement != [0, 0]:
+                    self.playerMap[player.x, player.y].remove(player.id)
+                    player.x += player.movement[0]
+                    player.x %= world_width
+                    player.y += player.movement[1]
+                    player.y %= world_height
+                    self.playerMap[player.x, player.y].append(player.id)
+                    player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] *
                                   player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
+                else:
+                    player.energy -= playerEnergyLossBase * (1 + playerEnergyCostMultiplies * player.energy)
+
                 # Remove Dead Players
                 if player.energy <= 0:
-                    # TODO remove players from world
+                    self.playerMap[player.x, player.y].remove(player.id)
                     player.alive = False
 
         # Resolve Conflicts (Players of the same team can share a spot)
@@ -125,19 +132,24 @@ class World:
                     p1 = random.randrange(len(x))
                     p2 = random.randrange(len(x))
                     if self.players[x[p1]].strategy != self.players[x[p2]].strategy:
-                        self.players[x[p1]].energy, self.players[x[p2]].energy = self.players[x[p1]].energy - \
-                                                                                 self.players[x[p2]].energy, \
-                                                                                 self.players[x[p2]].energy - \
-                                                                                 self.players[x[p1]].energy
-                    if self.players[x[p1]].energy <= 0:
-                        # TODO remove dead players from world
-                        self.players[x[p1]].alive = False
-                    if self.players[x[p2]].energy <= 0:
-                        # TODO remove dead players from world
-                        self.players[x[p2]].alive = False
-                    teams = set()
-                    for id in x:
-                        teams.add(self.players[id].strategy)
+                        # If the difference in Energy is less than 5, a random player survives with 5 energy left
+                        if (self.players[x[p1]].energy - self.players[x[p2]].energy) ** 2 < 25:
+                            self.players[x[p1]].energy = 5
+                            self.players[x[p2]].alive = False
+                            self.playerMap[self.players[x[p2]].x, self.players[x[p2]].y].remove(self.players[x[p2]].id)
+                        # otherwise the one with more energy survives with the diffrence of energy
+                        else:
+                            if self.players[x[p1]].energy < self.players[x[p2]].energy:
+                                self.players[x[p2]].energy = 5
+                                self.players[x[p1]].alive = False
+                                self.playerMap[self.players[x[p1]].x, self.players[x[p1]].y].remove(self.players[x[p1]].id)
+                            else:
+                                self.players[x[p1]].energy = 5
+                                self.players[x[p2]].alive = False
+                                self.playerMap[self.players[x[p2]].x, self.players[x[p2]].y].remove(self.players[x[p2]].id)
+                        teams = set()
+                        for id in x:
+                            teams.add(self.players[id].strategy)
 
     def vegetationSimulation(self):
         for idx, x in np.ndenumerate(self.terrain):
@@ -196,9 +208,9 @@ class World:
     def playerEatingSimulation(self):
         for player in self.players:
             if player.alive:
-                if self.vegetation[player.x, player.x] > 2:
-                    player.energy += energyFromVegetation(self.vegetation[player.x, player.x])
-                    self.vegetation[player.x, player.x] = 0
+                if self.vegetation[player.x, player.y] > 2:
+                    player.energy += energyFromVegetation(self.vegetation[player.x, player.y])
+                    self.vegetation[player.x, player.y] = 0
 
     # Each Tile Random and independent of surrounding
     # This method should not be used for the competition,
@@ -248,6 +260,7 @@ class World:
             self.tileSouth[idx] = (x, (y - 1) % sizeY)
             self.tileWest[idx] = ((x - 1) % sizeX, y)
             self.tileEast[idx] = ((x + 1) % sizeX, y)
+            self.playerMap[idx] = list()
 
 
 def main():
@@ -255,7 +268,7 @@ def main():
 
 
 def runFullTournament(inFolder, outFile):
-    print("Starting tournament, reading files from " + inFolder)
+    # print("Starting tournament, reading files from " + inFolder)
     scoreKeeper = {}
     STRATEGY_LIST = []
     for file in os.listdir(inFolder):
@@ -281,7 +294,7 @@ def runRound(STRATEGY_LIST):
         modules[strategy] = importlib.import_module(STRATEGY_FOLDER + "." + strategy)
 
     LENGTH_OF_GAME = 25000
-    world = World(world_width, world_height, 0, STRATEGY_LIST)
+    world = World(world_width, world_height, 0, STRATEGY_LIST, modules)
     for turn in range(LENGTH_OF_GAME):
         world.WorldSimulation()
 
