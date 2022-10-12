@@ -13,10 +13,27 @@ world_width = 20
 # For Now Only True is implemented
 world_wraparound = True
 
+playerStartingEnergy = 500
+playerEnergyLossBase = 1
+playerEnergyCostMultiplies = 0.001  # This Increases how much energy each player loses per energy they have
+
 # Tournament Paramenter
 STRATEGY_FOLDER = "exampleStrats"
 RESULTS_FILE = "results.txt"
 numberOfRounds = 3
+
+modules = dict()
+
+def energyFromVegetation(id):
+    if id == 3:
+        return 20
+    elif id == 4:
+        return 30
+    elif id == 5:
+        return 15
+    elif id == 6:
+        return 10
+    raise ValueError("energyFromVegetation: invalid Vegetation ID")
 
 
 class Player:
@@ -25,10 +42,15 @@ class Player:
         self.y = y
         self.strategy = strategy
         self.id = id
+        self.energy = playerStartingEnergy
+        self.alive = True
         self.movement = None
         self.do_split = None
         self.split_memory = None
         self.chase_target = None
+
+    def makeTurn(self):
+        self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = modules[self.strategy].make_turn(None, self.memory)
 
 
 class World:
@@ -38,7 +60,7 @@ class World:
         self.terrain = np.zeros((sizeX, sizeY), np.int32)
         # For Now 0 = No Vegetation, All else are one higher than the ID from concept
         self.vegetation = np.zeros((sizeX, sizeY), np.int32)
-        self.playerMap = np.zeros((sizeX, sizeY), bool)
+        self.playerMap = np.zeros((sizeX, sizeY), list)
 
         self.strategies = strategies
         self.players = list()
@@ -56,32 +78,66 @@ class World:
         if WorldGenTypeID == 1:
             self.WorldGen1()
 
+        nextPlayerID = 0
         for strategy in strategies:
-            self.players.append(Player(random.randrange(sizeX), random.randrange(sizeY), strategy, 0))
-
-    # Moves to be made next Turn
-    def addMove(self, strategy, id, movement, do_split, split_memory, chase_target):
-        # TODO Change how correct player is found, this will be slow with more players
-        # TODO Implement id's correctly
-        for player in self.players:
-            if player.strategy == strategy and id == player.id:
-                player.movement = movement
-                player.do_split = do_split
-                player.split_memory = split_memory
-                player.chase_target = chase_target
+            player = Player(random.randrange(sizeX), random.randrange(sizeY), strategy, nextPlayerID)
+            self.playerMap[player.x, player.y].append(nextPlayerID)
+            self.players.append(player)
+            nextPlayerID += 1
 
     def WorldSimulation(self):
+        self.askPlayersForMove()
         self.playerSimulation()
         self.vegetationSimulation()
 
-    def playerSimulation(self):
+    def askPlayersForMove(self):
         for player in self.players:
-            player.x += player.movement[0]
-            player.x %= world_width
-            player.y += player.movement[1]
-            player.y %= world_height
-        # TODO implement the results of walking
-        # TODO implement other actions than walking
+            if player.alive:
+                player.makeTurn()
+
+    def playerSimulation(self):
+        # Move Players
+        for player in self.players:
+            if player.alive:
+                # TODO move players in world
+                player.x += player.movement[0]
+                player.x %= world_width
+                player.y += player.movement[1]
+                player.y %= world_height
+                player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] * player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
+                # Remove Dead Players
+                if player.energy <= 0:
+                    # TODO remove players from world
+                    player.alive = False
+
+        # Resolve Conflicts (Players of the same team can share a spot)
+        for idx, x in np.ndenumerate(self.playerMap):
+            if len(x) >= 1:
+                teams = set()
+                for id in x:
+                    teams.add(self.players[id].strategy)
+                while len(teams) > 1:
+                    # Select 2 Random players
+                    p1 = random.randrange(len(x))
+                    p2 = random.randrange(len(x))
+                    if self.players[x[p1]].strategy != self.players[x[p2]].strategy:
+                        self.players[x[p1]].energy, self.players[x[p2]].energy = self.players[x[p1]].energy - self.players[x[p2]].energy, self.players[x[p2]].energy - self.players[x[p1]].energy
+                    if self.players[x[p1]].energy <= 0:
+                        # TODO remove dead players from world
+                        self.players[x[p1]].alive = False
+                    if self.players[x[p2]].energy <= 0:
+                        # TODO remove dead players from world
+                        self.players[x[p2]].alive = False
+                    teams = set()
+                    for id in x:
+                        teams.add(self.players[id].strategy)
+
+        # Eat Vegetation
+        for player in self.players:
+            if player.alive:
+                if self.vegetation[player.x, player.x] > 2:
+                    player.energy += energyFromVegetation(self.vegetation[player.x, player.x])
+                    self.vegetation[player.x, player.x] = 0
 
     def vegetationSimulation(self):
         for idx, x in np.ndenumerate(self.terrain):
@@ -187,6 +243,7 @@ class World:
             self.tileEast[idx] = ((x + 1) % sizeX, y)
 
 
+
 def main():
     runFullTournament(STRATEGY_FOLDER, RESULTS_FILE)
 
@@ -214,20 +271,12 @@ def runFullTournament(inFolder, outFile):
 
 def runRound(STRATEGY_LIST):
     modules = dict()
-    memories = dict()
     for strategy in STRATEGY_LIST:
         modules[strategy] = importlib.import_module(STRATEGY_FOLDER + "." + strategy)
-        memories[strategy] = list()
-        memories[strategy].append(None)
 
     LENGTH_OF_GAME = 25000
     world = World(world_width, world_height, 0, STRATEGY_LIST)
     for turn in range(LENGTH_OF_GAME):
-        for strategy in STRATEGY_LIST:
-            for id, memory in enumerate(memories[strategy]):
-                # TODO specify a format in which the world be given to Players
-                movement, do_split, split_memory, chase_target, memory = modules[strategy].make_turn(None, memory)
-                world.addMove(strategy, id, movement, do_split, split_memory, chase_target)
         world.WorldSimulation()
 
     history = None
