@@ -23,7 +23,6 @@ RESULTS_FILE = "results.txt"
 numberOfRounds = 1
 
 
-
 def energyFromVegetation(id):
     if id == 3:
         return 20
@@ -118,8 +117,9 @@ class World:
                     player.y += player.movement[1]
                     player.y %= world_height
                     self.playerMap[player.x, player.y].append(player.id)
-                    player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] *
-                                  player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
+                    player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[
+                        1] *
+                                      player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
                 else:
                     player.energy -= playerEnergyLossBase * (1 + playerEnergyCostMultiplies * player.energy)
 
@@ -149,11 +149,13 @@ class World:
                             if self.players[x[p1]].energy < self.players[x[p2]].energy:
                                 self.players[x[p2]].energy = 5
                                 self.players[x[p1]].alive = False
-                                self.playerMap[self.players[x[p1]].x, self.players[x[p1]].y].remove(self.players[x[p1]].id)
+                                self.playerMap[self.players[x[p1]].x, self.players[x[p1]].y].remove(
+                                    self.players[x[p1]].id)
                             else:
                                 self.players[x[p1]].energy = 5
                                 self.players[x[p2]].alive = False
-                                self.playerMap[self.players[x[p2]].x, self.players[x[p2]].y].remove(self.players[x[p2]].id)
+                                self.playerMap[self.players[x[p2]].x, self.players[x[p2]].y].remove(
+                                    self.players[x[p2]].id)
                         teams = set()
                         for id in x:
                             teams.add(self.players[id].strategy)
@@ -301,6 +303,9 @@ def runRound(STRATEGY_LIST, f):
 
     LENGTH_OF_GAME = 1000
     world = World(world_width, world_height, 0, STRATEGY_LIST, modules)
+
+    f.write("Average Energy over Time:\n")
+
     for turn in range(LENGTH_OF_GAME):
         world.WorldSimulation()
         sum = 0
@@ -309,11 +314,21 @@ def runRound(STRATEGY_LIST, f):
             if player.alive:
                 c += 1
                 sum += player.energy
-        f.write(str(sum/max(c, 1)) + ", ")
+        f.write(f"{sum / max(c, 1):1f}, ")
+
     f.write("\n\n In the end, alive are:\n")
+    count = dict()
+    for strategy in STRATEGY_LIST:
+        count[strategy] = 0
     for player in world.players:
         if player.alive:
-            f.write("Player " + str(player.id) + " of the team " + player.strategy + "\n")
+            count[player.strategy] += 1
+    for strategy in STRATEGY_LIST:
+        f.write(f"Of the team {strategy} there are {count[strategy]} Players.\n")
+    f.write("\n In detail, those alive are:\n")
+    for player in world.players:
+        if player.alive:
+            f.write(f"Player {player.id} of the team {player.strategy} with {player.energy:1f} energy.\n")
     history = None
     return history
 
