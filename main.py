@@ -52,7 +52,7 @@ class Player:
 
     def makeTurn(self):
         self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = self.modules[
-            self.strategy].make_turn(None, self.memory)
+            self.strategy].make_turn(None, self, self.memory)
 
 
 class World:
