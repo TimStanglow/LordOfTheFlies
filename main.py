@@ -20,7 +20,7 @@ playerEnergyCostMultiplies = 0.001  # This Increases how much energy each player
 # Tournament Paramenter
 STRATEGY_FOLDER = "exampleStrats"
 RESULTS_FILE = "results.txt"
-numberOfRounds = 3
+numberOfRounds = 1
 
 
 
@@ -44,8 +44,8 @@ class Player:
         self.id = id
         self.energy = playerStartingEnergy
         self.alive = True
-        self.movement = None
-        self.do_split = None
+        self.movement = [0, 0]
+        self.do_split = False
         self.split_memory = None
         self.chase_target = None
         self.memory = None
@@ -81,12 +81,12 @@ class World:
         if WorldGenTypeID == 1:
             self.WorldGen1()
 
-        nextPlayerID = 0
+        self.nextPlayerID = 0
         for strategy in strategies:
-            player = Player(random.randrange(sizeX), random.randrange(sizeY), strategy, nextPlayerID, modules)
-            self.playerMap[player.x, player.y].append(nextPlayerID)
+            player = Player(random.randrange(sizeX), random.randrange(sizeY), strategy, self.nextPlayerID, modules)
+            self.playerMap[player.x, player.y].append(self.nextPlayerID)
             self.players.append(player)
-            nextPlayerID += 1
+            self.nextPlayerID += 1
 
     def WorldSimulation(self):
         self.askPlayersForMove()
@@ -103,7 +103,14 @@ class World:
         # Move Players
         for player in self.players:
             if player.alive:
-                # TODO move players in world
+                if player.do_split:
+                    newPlayer = Player(player.x, player.y, player.strategy, self.nextPlayerID, player.modules)
+                    player.energy = player.energy / 2
+                    newPlayer.energy = player.energy
+                    self.playerMap[player.x, player.y].append(self.nextPlayerID)
+                    self.players.append(newPlayer)
+                    self.nextPlayerID += 1
+
                 if player.movement != [0, 0]:
                     self.playerMap[player.x, player.y].remove(player.id)
                     player.x += player.movement[0]
@@ -280,24 +287,33 @@ def runFullTournament(inFolder, outFile):
 
     f = open(outFile, "w+")
     for roundN in range(numberOfRounds):
-        runRound(STRATEGY_LIST)
+        runRound(STRATEGY_LIST, f)
 
-    f.write("Not Implemented")
     f.flush()
     f.close()
     print("Done with everything! Results file written to " + RESULTS_FILE)
 
 
-def runRound(STRATEGY_LIST):
+def runRound(STRATEGY_LIST, f):
     modules = dict()
     for strategy in STRATEGY_LIST:
         modules[strategy] = importlib.import_module(STRATEGY_FOLDER + "." + strategy)
 
-    LENGTH_OF_GAME = 25000
+    LENGTH_OF_GAME = 1000
     world = World(world_width, world_height, 0, STRATEGY_LIST, modules)
     for turn in range(LENGTH_OF_GAME):
         world.WorldSimulation()
-
+        sum = 0
+        c = 0
+        for player in world.players:
+            if player.alive:
+                c += 1
+                sum += player.energy
+        f.write(str(sum/max(c, 1)) + ", ")
+    f.write("\n\n In the end, alive are:\n")
+    for player in world.players:
+        if player.alive:
+            f.write("Player " + str(player.id) + " of the team " + player.strategy + "\n")
     history = None
     return history
 
