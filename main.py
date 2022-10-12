@@ -24,6 +24,7 @@ numberOfRounds = 3
 
 modules = dict()
 
+
 def energyFromVegetation(id):
     if id == 3:
         return 20
@@ -50,7 +51,8 @@ class Player:
         self.chase_target = None
 
     def makeTurn(self):
-        self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = modules[self.strategy].make_turn(None, self.memory)
+        self.movement, self.do_split, self.split_memory, self.chase_target, self.memory = modules[
+            self.strategy].make_turn(None, self.memory)
 
 
 class World:
@@ -87,15 +89,16 @@ class World:
 
     def WorldSimulation(self):
         self.askPlayersForMove()
-        self.playerSimulation()
+        self.playerMovementSimulation()
         self.vegetationSimulation()
+        self.playerEatingSimulation()
 
     def askPlayersForMove(self):
         for player in self.players:
             if player.alive:
                 player.makeTurn()
 
-    def playerSimulation(self):
+    def playerMovementSimulation(self):
         # Move Players
         for player in self.players:
             if player.alive:
@@ -104,7 +107,8 @@ class World:
                 player.x %= world_width
                 player.y += player.movement[1]
                 player.y %= world_height
-                player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] * player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
+                player.energy -= (playerEnergyLossBase + player.movement[0] * player.movement[0] + player.movement[1] *
+                                  player.movement[1]) * (1 + playerEnergyCostMultiplies * player.energy)
                 # Remove Dead Players
                 if player.energy <= 0:
                     # TODO remove players from world
@@ -121,7 +125,10 @@ class World:
                     p1 = random.randrange(len(x))
                     p2 = random.randrange(len(x))
                     if self.players[x[p1]].strategy != self.players[x[p2]].strategy:
-                        self.players[x[p1]].energy, self.players[x[p2]].energy = self.players[x[p1]].energy - self.players[x[p2]].energy, self.players[x[p2]].energy - self.players[x[p1]].energy
+                        self.players[x[p1]].energy, self.players[x[p2]].energy = self.players[x[p1]].energy - \
+                                                                                 self.players[x[p2]].energy, \
+                                                                                 self.players[x[p2]].energy - \
+                                                                                 self.players[x[p1]].energy
                     if self.players[x[p1]].energy <= 0:
                         # TODO remove dead players from world
                         self.players[x[p1]].alive = False
@@ -131,13 +138,6 @@ class World:
                     teams = set()
                     for id in x:
                         teams.add(self.players[id].strategy)
-
-        # Eat Vegetation
-        for player in self.players:
-            if player.alive:
-                if self.vegetation[player.x, player.x] > 2:
-                    player.energy += energyFromVegetation(self.vegetation[player.x, player.x])
-                    self.vegetation[player.x, player.x] = 0
 
     def vegetationSimulation(self):
         for idx, x in np.ndenumerate(self.terrain):
@@ -193,6 +193,13 @@ class World:
                     elif randomNumber < 10:
                         self.vegetation[idx] = 6
 
+    def playerEatingSimulation(self):
+        for player in self.players:
+            if player.alive:
+                if self.vegetation[player.x, player.x] > 2:
+                    player.energy += energyFromVegetation(self.vegetation[player.x, player.x])
+                    self.vegetation[player.x, player.x] = 0
+
     # Each Tile Random and independent of surrounding
     # This method should not be used for the competition,
     # and is only here, as it's the simplest possible so other parts can be worked on.
@@ -241,7 +248,6 @@ class World:
             self.tileSouth[idx] = (x, (y - 1) % sizeY)
             self.tileWest[idx] = ((x - 1) % sizeX, y)
             self.tileEast[idx] = ((x + 1) % sizeX, y)
-
 
 
 def main():
